@@ -130,7 +130,6 @@
         const MODEL_URL = "https://teachablemachine.withgoogle.com/models/WvWLTRByO/";
         const VIDEO_ID = "oRr5hxr_bRA";
         
-        // 타임라인 설정 (제공된 영상 기준)
         const ACTION_TIMELINE = [
             { start: 0, end: 14, action: "REST" },
             { start: 15, end: 32, action: "SAY HI" },
@@ -147,8 +146,8 @@
         let timeLeft = 60, timerInterval;
         let stats = { perfect: 0, great: 0, normal: 0 };
         let isPlayerReady = false;
+        let animationId = null;
 
-        // 1. 유튜브 API 초기화
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
                 height: '100%', width: '100%', videoId: VIDEO_ID,
@@ -160,19 +159,19 @@
             });
         }
 
-        // 2. AI 모델 및 카메라 초기화
         async function initAI() {
             try {
                 model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
                 
                 webcam = new tmImage.Webcam(640, 480, true);
-                await webcam.setup(); // 카메라 접근 요청
+                await webcam.setup();
                 await webcam.play();
                 
                 document.getElementById('loading-overlay').style.display = 'none';
                 document.getElementById('webcam-container').appendChild(webcam.canvas);
                 
-                window.requestAnimationFrame(loop);
+                // 루프를 별도 변수에 저장하여 관리 최적화
+                animationId = window.requestAnimationFrame(loop);
                 checkSystemReady();
             } catch (error) {
                 console.error(error);
@@ -193,18 +192,18 @@
 
         window.onload = initAI;
 
-        // 3. 게임 루프
         async function loop() {
-            webcam.update();
+            webcam.update(); // 웹캠 프레임 업데이트
+            
             if (isGameRunning) {
                 await predict();
                 updateTargetByTime();
             }
-            window.requestAnimationFrame(loop);
+            animationId = window.requestAnimationFrame(loop);
         }
 
         function updateTargetByTime() {
-            if (gameMode === 'challenge') return; // 도전모드는 별도 로직
+            if (gameMode === 'challenge') return;
 
             const currentTime = player.getCurrentTime();
             const found = ACTION_TIMELINE.find(item => currentTime >= item.start && currentTime <= item.end);
@@ -216,6 +215,7 @@
         }
 
         async function predict() {
+            // 게임 실행 중일 때만 예측 수행
             const prediction = await model.predict(webcam.canvas);
             const target = prediction.find(p => p.className === currentTargetAction);
             
@@ -227,7 +227,7 @@
         let lastHitTime = 0;
         function handleSuccess(prob) {
             const now = Date.now();
-            if (now - lastHitTime < 700) return; // 히트 쿨다운
+            if (now - lastHitTime < 700) return; 
             lastHitTime = now;
 
             let grade = "NORMAL", points = 100, colorClass = "normal-text";
@@ -254,30 +254,35 @@
             
             document.getElementById('ingame-overlay').classList.remove('hidden');
             
-            // 통계 업데이트
             document.getElementById('stat-perfect').innerText = stats.perfect;
             document.getElementById('stat-great').innerText = stats.great;
             document.getElementById('stat-normal').innerText = stats.normal;
 
-            // 프로그레스 바 애니메이션
             const pb = document.getElementById('action-progress');
             pb.style.width = "100%";
-            setTimeout(() => pb.style.width = "0%", 600);
+            setTimeout(() => {
+                if(pb) pb.style.width = "0%";
+            }, 600);
         }
 
-        // 4. 게임 모드 컨트롤
         function startGame(mode) {
             gameMode = mode;
             score = 0; combo = 0;
             stats = { perfect: 0, great: 0, normal: 0 };
-            isGameRunning = true;
-
+            
+            // 점수 및 통계 UI 초기화
             document.getElementById('score-text').innerText = "0";
+            document.getElementById('stat-perfect').innerText = "0";
+            document.getElementById('stat-great').innerText = "0";
+            document.getElementById('stat-normal').innerText = "0";
             document.getElementById('ingame-overlay').classList.add('hidden');
             document.getElementById('control-panel').classList.add('hidden');
 
+            isGameRunning = true;
+
             if (mode === 'challenge') {
                 timeLeft = 60;
+                document.getElementById('time-left').innerText = "60s";
                 document.getElementById('timer-box').classList.remove('hidden');
                 startChallengeMode();
             } else {
@@ -299,6 +304,7 @@
             };
             changeAction();
 
+            if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 timeLeft--;
                 document.getElementById('time-left').innerText = `${timeLeft}s`;
@@ -308,20 +314,25 @@
 
         function endGame() {
             isGameRunning = false;
-            clearInterval(timerInterval);
-            player.pauseVideo();
+            if (timerInterval) clearInterval(timerInterval);
+            if (player && player.pauseVideo) player.pauseVideo();
             
             document.getElementById('control-panel').classList.remove('hidden');
             document.getElementById('target-action').innerText = "READY...";
             
-            alert(`게임 종료!\n최종 점수: ${score}\nPerfect: ${stats.perfect}\nGreat: ${stats.great}\n최대 콤보: ${combo}`);
+            const resultMsg = `게임 종료!\n최종 점수: ${score}\nPerfect: ${stats.perfect}\nGreat: ${stats.great}\n최대 콤보: ${combo}`;
+            showMessage("게임이 종료되었습니다!");
+            setTimeout(() => alert(resultMsg), 500);
         }
 
         function showMessage(text) {
             const box = document.getElementById('msg-box');
+            if(!box) return;
             box.innerText = text;
             box.classList.remove('hidden');
-            setTimeout(() => box.classList.add('hidden'), 3000);
+            setTimeout(() => {
+                if(box) box.classList.add('hidden');
+            }, 3000);
         }
     </script>
 </body>

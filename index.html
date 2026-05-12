@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Interactive Warm Up Game</title>
+    <title>AI Interactive Dance Challenge</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@latest/dist/teachablemachine-pose.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap');
+        body { font-family: 'Jua', sans-serif; }
         .video-container {
             position: relative;
             padding-bottom: 56.25%; /* 16:9 ratio */
@@ -17,82 +19,118 @@
         }
         .video-container iframe {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
         }
         #webcam-container canvas {
             width: 100%;
             border-radius: 0.5rem;
             transform: rotateY(180deg);
         }
+        .grade-pop { animation: pop 0.4s ease-out; }
+        @keyframes pop { 
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .perfect-text { color: #FBBF24; text-shadow: 0 0 15px rgba(251, 191, 36, 0.6); }
+        .great-text { color: #60A5FA; }
+        .normal-text { color: #9CA3AF; }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-sans min-h-screen">
+<body class="bg-gray-900 text-white min-h-screen">
 
-    <div class="container mx-auto px-4 py-8">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-yellow-400 mb-2">AI 인터랙티브 웜업</h1>
-            <p class="text-gray-400">영상의 동작을 따라하고 점수를 획득하세요!</p>
+    <div class="container mx-auto px-4 py-6">
+        <!-- 헤더 -->
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-bold text-teal-400 mb-1">AI 댄스 & 액션 챌린지</h1>
+            <p class="text-gray-400">화면의 동작을 따라하고 최고 점수에 도전하세요!</p>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- 왼쪽: 유튜브 영상 및 게임 가이드 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 왼쪽: 메인 플레이 영역 -->
             <div class="space-y-4">
-                <div class="bg-black rounded-xl overflow-hidden shadow-2xl">
+                <div class="bg-black rounded-2xl overflow-hidden shadow-2xl border-2 border-gray-800 relative">
                     <div class="video-container">
                         <div id="player"></div>
                     </div>
-                </div>
-                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-xl font-semibold">현재 목표 동작:</span>
-                        <span id="target-action" class="text-3xl font-black text-green-400 tracking-widest">준비 중...</span>
+                    <!-- 오버레이: 콤보 및 판정 -->
+                    <div id="ingame-overlay" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center hidden">
+                        <div id="combo-display" class="text-6xl font-black text-red-500 italic mb-2">0 COMBO</div>
+                        <div id="grade-display" class="text-5xl font-bold grade-pop"></div>
                     </div>
-                    <div class="w-full bg-gray-700 h-4 rounded-full overflow-hidden">
+                </div>
+
+                <!-- 현재 동작 가이드 -->
+                <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg">
+                    <div class="flex justify-between items-end mb-2">
+                        <div>
+                            <p class="text-gray-400 text-sm">지금 해야 할 동작</p>
+                            <h2 id="target-action" class="text-4xl font-black text-green-400 tracking-tighter uppercase">READY...</h2>
+                        </div>
+                        <div id="timer-box" class="hidden text-right">
+                            <p class="text-red-400 text-sm">남은 시간</p>
+                            <p class="text-3xl font-mono font-bold" id="time-left">60s</p>
+                        </div>
+                    </div>
+                    <div class="w-full bg-gray-700 h-3 rounded-full overflow-hidden">
                         <div id="action-progress" class="bg-green-500 h-full w-0 transition-all duration-300"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- 오른쪽: 웹캠 및 점수판 -->
-            <div class="space-y-4 text-center">
-                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 relative">
-                    <div id="webcam-container" class="bg-black rounded-lg overflow-hidden flex justify-center items-center h-[300px]">
-                        <!-- 웹캠 캔버스가 여기에 삽입됨 -->
-                        <div id="loading-spinner" class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-400"></div>
+            <!-- 오른쪽: 웹캠 및 상태 영역 -->
+            <div class="space-y-4">
+                <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700 relative shadow-xl">
+                    <div id="webcam-container" class="bg-black rounded-xl overflow-hidden flex justify-center items-center aspect-video">
+                        <div id="loading-overlay" class="text-center">
+                            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-teal-400 mx-auto mb-4"></div>
+                            <p id="status-text" class="text-teal-400">AI 모델 로딩 중...</p>
+                        </div>
                     </div>
-                    <div class="absolute top-6 right-6 bg-yellow-500 text-black px-4 py-2 rounded-full font-bold shadow-lg">
-                        점수: <span id="score">0</span>
-                    </div>
-                </div>
-
-                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                    <h3 class="text-lg font-bold mb-4">인식 상태</h3>
-                    <div id="label-container" class="grid grid-cols-2 gap-2 text-sm">
-                        <!-- 티처블 머신 레이블 결과가 여기에 표시됨 -->
+                    <!-- 실시간 점수 대시보드 -->
+                    <div class="absolute top-8 right-8 bg-teal-500 text-black px-5 py-2 rounded-full font-bold shadow-2xl">
+                        SCORE: <span id="score-text">0</span>
                     </div>
                 </div>
 
-                <button id="start-btn" onclick="initGame()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-4 rounded-xl text-xl transition-all shadow-lg active:scale-95">
-                    게임 시작하기 (카메라 권한 필요)
-                </button>
+                <!-- 판정 통계 -->
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                        <p class="text-xs text-gray-400">PERFECT</p>
+                        <p id="stat-perfect" class="text-2xl font-bold text-yellow-400">0</p>
+                    </div>
+                    <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                        <p class="text-xs text-gray-400">GREAT</p>
+                        <p id="stat-great" class="text-2xl font-bold text-blue-400">0</p>
+                    </div>
+                    <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                        <p class="text-xs text-gray-400">NORMAL</p>
+                        <p id="stat-normal" class="text-2xl font-bold text-gray-300">0</p>
+                    </div>
+                </div>
+
+                <!-- 게임 시작 컨트롤 -->
+                <div id="control-panel" class="grid grid-cols-2 gap-3">
+                    <button id="btn-normal" onclick="startGame('normal')" disabled class="bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl text-lg transition-all shadow-lg">
+                        일반 모드
+                    </button>
+                    <button id="btn-challenge" onclick="startGame('challenge')" disabled class="bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl text-lg transition-all shadow-lg">
+                        도전 모드
+                    </button>
+                </div>
+                <p id="error-display" class="text-red-500 text-center text-sm font-bold hidden">카메라를 찾을 수 없거나 권한이 거부되었습니다.</p>
             </div>
         </div>
     </div>
 
-    <!-- 커스텀 알림/메시지 박스 -->
-    <div id="msg-box" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-yellow-400 text-black px-8 py-3 rounded-full font-bold text-lg hidden shadow-2xl transition-all">
-    </div>
+    <!-- 플로팅 메시지 -->
+    <div id="msg-box" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-yellow-400 text-black px-8 py-3 rounded-full font-bold text-lg hidden shadow-2xl z-50"></div>
 
     <script>
-        // --- 설정 데이터 ---
-        const URL = "https://teachablemachine.withgoogle.com/models/WvWLTRByO/";
+        const MODEL_URL = "https://teachablemachine.withgoogle.com/models/WvWLTRByO/";
         const VIDEO_ID = "oRr5hxr_bRA";
         
-        // 영상 타임라인별 정답 동작 정의 (초 단위)
-        // 영상 내용에 따라 시간대를 조정하세요
+        // 타임라인 설정 (제공된 영상 기준)
         const ACTION_TIMELINE = [
             { start: 0, end: 14, action: "REST" },
             { start: 15, end: 32, action: "SAY HI" },
@@ -102,163 +140,188 @@
             { start: 69, end: 86, action: "JUMP" }
         ];
 
-        let model, webcam, ctx, labelContainer, maxPredictions;
-        let player;
-        let score = 0;
+        let model, webcam, player;
+        let score = 0, combo = 0, isGameRunning = false;
         let currentTargetAction = "REST";
-        let isGameRunning = false;
+        let gameMode = 'normal';
+        let timeLeft = 60, timerInterval;
+        let stats = { perfect: 0, great: 0, normal: 0 };
+        let isPlayerReady = false;
 
-        // 유튜브 API 준비
+        // 1. 유튜브 API 초기화
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
-                height: '360',
-                width: '640',
-                videoId: VIDEO_ID,
-                playerVars: {
-                    'autoplay': 0,
-                    'controls': 1,
-                    'rel': 0,
-                    'modestbranding': 1
-                },
+                height: '100%', width: '100%', videoId: VIDEO_ID,
+                playerVars: { 'autoplay': 0, 'controls': 1, 'rel': 0, 'modestbranding': 1 },
                 events: {
-                    'onStateChange': onPlayerStateChange
+                    'onReady': () => { isPlayerReady = true; checkSystemReady(); },
+                    'onStateChange': (e) => { if(e.data === YT.PlayerState.ENDED) endGame(); }
                 }
             });
         }
 
-        function onPlayerStateChange(event) {
-            if (event.data == YT.PlayerState.PLAYING) {
-                isGameRunning = true;
-                updateGameLoop();
-            } else {
-                isGameRunning = false;
-            }
-        }
-
-        // 게임 루프: 현재 영상 시간에 맞는 동작 업데이트 및 점수 체크
-        function updateGameLoop() {
-            if (!isGameRunning) return;
-
-            const currentTime = player.getCurrentTime();
-            const foundAction = ACTION_TIMELINE.find(item => currentTime >= item.start && currentTime <= item.end);
-
-            if (foundAction && foundAction.action !== currentTargetAction) {
-                currentTargetAction = foundAction.action;
-                document.getElementById('target-action').innerText = currentTargetAction;
-                showMessage(`동작 변경: ${currentTargetAction}!`);
-            }
-
-            requestAnimationFrame(updateGameLoop);
-        }
-
-        // 티처블 머신 모델 로드 및 웹캠 초기화
-        async function initGame() {
-            const startBtn = document.getElementById('start-btn');
-            startBtn.disabled = true;
-            startBtn.innerText = "로딩 중...";
-
+        // 2. AI 모델 및 카메라 초기화
+        async function initAI() {
             try {
-                const modelURL = URL + "model.json";
-                const metadataURL = URL + "metadata.json";
-
-                // 모델 로드
-                model = await tmPose.load(modelURL, metadataURL);
-                maxPredictions = model.getTotalClasses();
-
-                // 웹캠 설정
-                const size = 300;
-                const flip = true;
-                webcam = new tmPose.Webcam(size, size, flip);
-                await webcam.setup();
+                model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+                
+                webcam = new tmImage.Webcam(640, 480, true);
+                await webcam.setup(); // 카메라 접근 요청
                 await webcam.play();
                 
-                document.getElementById('loading-spinner').style.display = 'none';
+                document.getElementById('loading-overlay').style.display = 'none';
+                document.getElementById('webcam-container').appendChild(webcam.canvas);
+                
                 window.requestAnimationFrame(loop);
-
-                // 캔버스 설정
-                const canvas = document.createElement("canvas");
-                canvas.width = size; canvas.height = size;
-                ctx = canvas.getContext("2d");
-                document.getElementById("webcam-container").appendChild(canvas);
-
-                // 레이블 컨테이너 설정
-                labelContainer = document.getElementById("label-container");
-                for (let i = 0; i < maxPredictions; i++) {
-                    const div = document.createElement("div");
-                    div.className = "bg-gray-700 p-2 rounded flex justify-between";
-                    div.innerHTML = `<span></span><span class='font-mono text-yellow-400'>0%</span>`;
-                    labelContainer.appendChild(div);
-                }
-
-                startBtn.classList.add('hidden');
-                showMessage("모델 로드 완료! 영상을 재생하세요.");
-                player.playVideo();
-
-            } catch (e) {
-                console.error(e);
-                alert("웹캠을 시작할 수 없습니다. 권한을 확인해주세요.");
-                startBtn.disabled = false;
-                startBtn.innerText = "다시 시도";
+                checkSystemReady();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loading-overlay').style.display = 'none';
+                document.getElementById('error-display').classList.remove('hidden');
+                document.getElementById('status-text').innerText = "카메라 오류 발생";
+                document.getElementById('status-text').classList.replace('text-teal-400', 'text-red-500');
             }
         }
 
-        async function loop(timestamp) {
+        function checkSystemReady() {
+            if (isPlayerReady && model && webcam) {
+                document.getElementById('status-text').innerText = "모든 준비 완료!";
+                document.getElementById('btn-normal').disabled = false;
+                document.getElementById('btn-challenge').disabled = false;
+            }
+        }
+
+        window.onload = initAI;
+
+        // 3. 게임 루프
+        async function loop() {
             webcam.update();
-            await predict();
+            if (isGameRunning) {
+                await predict();
+                updateTargetByTime();
+            }
             window.requestAnimationFrame(loop);
         }
 
-        async function predict() {
-            const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-            const prediction = await model.predict(posenetOutput);
+        function updateTargetByTime() {
+            if (gameMode === 'challenge') return; // 도전모드는 별도 로직
 
-            for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i].className;
-                const prob = prediction[i].probability.toFixed(2);
-                
-                const labelDiv = labelContainer.childNodes[i];
-                labelDiv.childNodes[0].innerText = classPrediction;
-                labelDiv.childNodes[1].innerText = (prob * 100).toFixed(0) + "%";
-
-                // 점수 계산 로직: 현재 목표 동작과 85% 이상 일치할 때
-                if (isGameRunning && classPrediction === currentTargetAction && prob > 0.85) {
-                    increaseScore();
-                    labelDiv.classList.replace('bg-gray-700', 'bg-green-900');
-                } else {
-                    labelDiv.classList.replace('bg-green-900', 'bg-gray-700');
-                }
-            }
-
-            drawPose(pose);
-        }
-
-        function increaseScore() {
-            score += 1; // 초당 프레임 단위로 올라가므로 실제로는 매우 빠르게 상승
-            document.getElementById('score').innerText = Math.floor(score / 10);
+            const currentTime = player.getCurrentTime();
+            const found = ACTION_TIMELINE.find(item => currentTime >= item.start && currentTime <= item.end);
             
-            // 프로그레스 바 시각화 (동작 유지 게이지처럼 활용 가능)
-            const progress = (score % 100);
-            document.getElementById('action-progress').style.width = progress + "%";
+            if (found && found.action !== currentTargetAction) {
+                currentTargetAction = found.action;
+                document.getElementById('target-action').innerText = currentTargetAction;
+            }
         }
 
-        function drawPose(pose) {
-            if (webcam.canvas) {
-                ctx.drawImage(webcam.canvas, 0, 0);
-                if (pose) {
-                    const minPartConfidence = 0.5;
-                    tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-                    tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
-                }
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            const target = prediction.find(p => p.className === currentTargetAction);
+            
+            if (currentTargetAction !== "REST" && target && target.probability > 0.5) {
+                handleSuccess(target.probability);
             }
+        }
+
+        let lastHitTime = 0;
+        function handleSuccess(prob) {
+            const now = Date.now();
+            if (now - lastHitTime < 700) return; // 히트 쿨다운
+            lastHitTime = now;
+
+            let grade = "NORMAL", points = 100, colorClass = "normal-text";
+            if (prob > 0.96) {
+                grade = "PERFECT"; points = 500; stats.perfect++; colorClass = "perfect-text";
+            } else if (prob > 0.85) {
+                grade = "GREAT"; points = 300; stats.great++; colorClass = "great-text";
+            } else {
+                stats.normal++;
+            }
+
+            combo++;
+            score += points + (combo * 10);
+            renderHit(grade, colorClass);
+        }
+
+        function renderHit(grade, colorClass) {
+            document.getElementById('score-text').innerText = score;
+            document.getElementById('combo-display').innerText = `${combo} COMBO`;
+            
+            const gradeEl = document.getElementById('grade-display');
+            gradeEl.innerText = grade;
+            gradeEl.className = `text-5xl font-bold grade-pop ${colorClass}`;
+            
+            document.getElementById('ingame-overlay').classList.remove('hidden');
+            
+            // 통계 업데이트
+            document.getElementById('stat-perfect').innerText = stats.perfect;
+            document.getElementById('stat-great').innerText = stats.great;
+            document.getElementById('stat-normal').innerText = stats.normal;
+
+            // 프로그레스 바 애니메이션
+            const pb = document.getElementById('action-progress');
+            pb.style.width = "100%";
+            setTimeout(() => pb.style.width = "0%", 600);
+        }
+
+        // 4. 게임 모드 컨트롤
+        function startGame(mode) {
+            gameMode = mode;
+            score = 0; combo = 0;
+            stats = { perfect: 0, great: 0, normal: 0 };
+            isGameRunning = true;
+
+            document.getElementById('score-text').innerText = "0";
+            document.getElementById('ingame-overlay').classList.add('hidden');
+            document.getElementById('control-panel').classList.add('hidden');
+
+            if (mode === 'challenge') {
+                timeLeft = 60;
+                document.getElementById('timer-box').classList.remove('hidden');
+                startChallengeMode();
+            } else {
+                document.getElementById('timer-box').classList.add('hidden');
+                player.seekTo(0);
+                player.playVideo();
+            }
+            
+            showMessage(`${mode === 'normal' ? '일반' : '도전'} 모드 시작!`);
+        }
+
+        function startChallengeMode() {
+            const actions = ["SAY HI", "WALK", "SWING", "PAW", "JUMP"];
+            const changeAction = () => {
+                if (!isGameRunning) return;
+                currentTargetAction = actions[Math.floor(Math.random() * actions.length)];
+                document.getElementById('target-action').innerText = currentTargetAction;
+                setTimeout(changeAction, 4000);
+            };
+            changeAction();
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('time-left').innerText = `${timeLeft}s`;
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            clearInterval(timerInterval);
+            player.pauseVideo();
+            
+            document.getElementById('control-panel').classList.remove('hidden');
+            document.getElementById('target-action').innerText = "READY...";
+            
+            alert(`게임 종료!\n최종 점수: ${score}\nPerfect: ${stats.perfect}\nGreat: ${stats.great}\n최대 콤보: ${combo}`);
         }
 
         function showMessage(text) {
             const box = document.getElementById('msg-box');
             box.innerText = text;
             box.classList.remove('hidden');
-            setTimeout(() => {
-                box.classList.add('hidden');
-            }, 3000);
+            setTimeout(() => box.classList.add('hidden'), 3000);
         }
     </script>
 </body>
